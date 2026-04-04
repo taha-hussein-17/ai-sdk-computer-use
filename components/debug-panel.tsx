@@ -3,7 +3,6 @@
 import { JSXElementConstructor, ReactElement, ReactNode, ReactPortal, useState } from "react";
 import { useToolEvents, useAgentStatus, useEventStore, useEventCountsByAction } from "@/lib/store/event-store";
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
 import { 
   Terminal, 
   Trash2, 
@@ -24,11 +23,11 @@ export function DebugPanel() {
     new Date(ts).toLocaleString([], { hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   return (
-    <motion.div 
-      initial={false}
-      animate={{ 
+    <div 
+      style={{
         width: isOpen ? 400 : 140,
         height: isOpen ? 500 : 36,
+        transition: "width 0.2s ease, height 0.2s ease"
       }}
       className={cn(
         "fixed bottom-4 right-4 z-50 flex flex-col border border-zinc-200 bg-white shadow-2xl overflow-hidden font-mono text-[10px] rounded-lg",
@@ -57,14 +56,8 @@ export function DebugPanel() {
         </div>
       </div>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex flex-col flex-1 overflow-hidden"
-          >
+      {isOpen && (
+        <div className="flex flex-col flex-1 overflow-hidden">
             {/* Toolbar */}
             <div className="flex items-center justify-between px-2 py-1.5 bg-zinc-50 border-b border-zinc-200 shrink-0">
               <span className="text-zinc-600 uppercase text-[9px] font-bold">
@@ -97,11 +90,8 @@ export function DebugPanel() {
                   <span>Waiting for events...</span>
                 </div>
               ) : (
-                events.slice().reverse().map((event: { id: any; timestamp: number; type: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; action: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; status: string; payload: any; duration: number; }) => (
-                  <motion.div 
-                    layout
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
+              events.slice().reverse().map((event: { id: any; timestamp: number; type: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; action: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; status: string; payload: any; duration: number; }) => (
+                  <div 
                     key={event.id + event.timestamp} 
                     className="flex flex-col p-2.5 bg-white border border-zinc-200 rounded-lg shadow-sm hover:border-zinc-300 transition-colors group"
                   >
@@ -135,13 +125,12 @@ export function DebugPanel() {
                         </div>
                       )}
                     </div>
-                  </motion.div>
+                  </div>
                 ))
               )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+        </div>
+      )}
+    </div>
   );
 }
