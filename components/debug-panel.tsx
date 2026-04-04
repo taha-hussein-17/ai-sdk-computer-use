@@ -108,7 +108,7 @@ export function DebugPanel() {
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-2">
                         <span className={cn(
-                          "px-1.5 py-0.5 rounded text-[8px] font-bold uppercase",
+                          "px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ",
                           event.type === 'computer' ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
                         )}>
                           {event.type}
