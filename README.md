@@ -1,126 +1,144 @@
-<a href="https://ai-sdk-computer-use.vercel.app">
-  <h1 align="center">AI SDK Computer Use Demo</h1>
-</a>
+AI Agent Dashboard (Computer Use)
 
-<p align="center">
-  An open-source AI chatbot demonstrating computer use capabilities with Anthropic Claude Sonnet 4.5, Vercel Sandboxes, and the AI SDK by Vercel.
-</p>
+Author: Taha Hussein
 
-<p align="center">
-  <a href="#features"><strong>Features</strong></a> ·
-  <a href="#how-it-works"><strong>How It Works</strong></a> ·
-  <a href="#deploy-your-own"><strong>Deploy Your Own</strong></a> ·
-  <a href="#running-locally"><strong>Running Locally</strong></a>
-</p>
-<br/>
+🚀 Overview
 
-## Features
+This project is a production-style AI Agent Dashboard built on top of the Vercel AI SDK Computer Use demo.
 
-- Streaming text responses powered by the [AI SDK](https://sdk.vercel.ai/docs).
-- Anthropic Claude Sonnet 4.5 with [computer use](https://sdk.vercel.ai/docs/guides/computer-use) and bash tool capabilities.
-- Remote desktop environment running in a [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) with Chrome, a window manager, and VNC streaming.
-- [shadcn/ui](https://ui.shadcn.com/) components for a modern, responsive UI powered by [Tailwind CSS](https://tailwindcss.com).
-- Built with the latest [Next.js](https://nextjs.org) App Router.
+It simulates an AI agent capable of:
 
-## How It Works
+Interacting with a remote desktop (mouse, keyboard, screenshots)
+Executing bash commands
+Streaming actions in real-time
+Tracking and visualizing tool events
 
-The app spins up a Vercel Sandbox from a pre-built snapshot that includes:
+The goal was to extend a simple demo into a scalable frontend architecture similar to real-world agent platforms.
 
-- **Xvnc** — a virtual X11 display server
-- **openbox** — a lightweight window manager
-- **noVNC + websockify** — streams the desktop to the browser via WebSocket
-- **Google Chrome** — auto-launched so the AI agent has a browser ready
-- **xdotool + ImageMagick** — for mouse/keyboard control and screenshots
+🧠 Features
+🖥️ Two-Panel Dashboard
+Left Panel
+Chat interface
+Inline tool call visualization
+Streaming responses
+Right Panel
+Live VNC desktop (noVNC iframe)
+Real-time agent interaction
+Panels are horizontally resizable
+⚡ Event Pipeline (Core Feature)
 
-When a user sends a message, Claude uses the `computer` tool (screenshot, click, type, scroll) and the `bash` tool (run shell commands) to interact with the sandbox desktop. The noVNC stream is displayed in a resizable iframe alongside the chat.
+All tool activity is tracked through a centralized event store:
 
-### Architecture
+Each event includes:
 
-```
-User ↔ Next.js Chat UI ↔ AI SDK ↔ Claude Sonnet 4.5
-                                        ↓
-                                  Vercel Sandbox
-                              ┌─────────────────────┐
-                              │  Xvnc (:99)         │
-                              │  openbox             │
-                              │  Chrome              │
-                              │  websockify → noVNC  │
-                              └─────────────────────┘
-                                        ↓
-                              noVNC iframe in browser
-```
+id
+timestamp
+type (computer / bash)
+action
+payload
+status (pending / success / error)
+duration
+Derived State:
+Total event count
+Event counts per action
+Agent status (idle / running)
+🧾 Debug Panel
+Displays all recorded events
+Helps visualize agent behavior
+Useful for debugging + evaluation
+💬 Chat System
+Streaming messages using AI SDK
+Tool call rendering (computer + bash)
+Error handling for malformed responses
+🗂️ Multi-Session Chat
+Create new sessions
+Switch between sessions
+Delete sessions
+Persisted using localStorage
+⚙️ Tool Integration
+Computer Tool
+mouse_move
+left_click
+type
+screenshot
+Bash Tool
+Execute shell commands
+⚡ Performance Optimization
+VNC iframe does NOT re-render on chat updates
+Message rendering memoized
+Event deduplication using Set
+🏗️ Architecture
+User → Chat UI (React)
+     → useChat (AI SDK)
+     → API Route (/api/chat)
+     → Tool Calls (computer / bash)
+     → Vercel Sandbox (Linux Desktop)
+     → noVNC Stream (iframe)
 
-## Deploy Your Own
-
-You can deploy your own version to Vercel by clicking the button below:
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?project-name=AI+SDK+Computer+Use+Demo&repository-name=ai-sdk-computer-use&repository-url=https%3A%2F%2Fgithub.com%2Fvercel-labs%2Fai-sdk-computer-use&demo-title=AI+SDK+Computer+Use+Demo&demo-url=https%3A%2F%2Fai-sdk-computer-use.vercel.app%2F&demo-description=A+chatbot+application+built+with+Next.js+demonstrating+Anthropic+Claude+Sonnet+4.5+computer+use+capabilities+with+Vercel+Sandboxes&env=ANTHROPIC_API_KEY,SANDBOX_SNAPSHOT_ID)
-
-## Running Locally
-
-### Prerequisites
-
-- Node.js 18+
-- A [Vercel](https://vercel.com) account (for Sandbox access)
-- An [Anthropic API key](https://console.anthropic.com/)
-
-### 1. Install dependencies
-
-```bash
+Parallel:
+Tool Calls → Event Store (Zustand) → Debug Panel
+🧰 Tech Stack
+Next.js (App Router)
+TypeScript (strict, no any)
+Vercel AI SDK
+Zustand (state management)
+Tailwind CSS + shadcn/ui
+Vercel Sandboxes
+noVNC + Xvnc
+🛠️ Setup
+1. Install dependencies
 pnpm install
-```
-
-### 2. Set up Vercel credentials
-
-Install the [Vercel CLI](https://vercel.com/docs/cli) and link your project:
-
-```bash
-pnpm install -g vercel
+2. Setup Vercel
 vercel link
 vercel env pull
-```
-
-This creates a `.env.local` file with `VERCEL_OIDC_TOKEN` for Sandbox authentication.
-
-Alternatively, set `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, and `VERCEL_PROJECT_ID` manually in your `.env.local`.
-
-### 3. Create a sandbox snapshot
-
-The snapshot pre-installs the desktop environment (Xvnc, Chrome, openbox, noVNC, xdotool, ImageMagick) so sandboxes boot in seconds.
-
-```bash
+3. Create snapshot
 npx tsx lib/sandbox/create-snapshot.ts
-```
 
-This takes ~10 minutes. When done, it outputs a snapshot ID. Add it to your `.env.local`:
+Add to .env.local:
 
-```
-SANDBOX_SNAPSHOT_ID=snap_xxxxxxxxxxxxx
-```
-
-### 4. Add your Anthropic API key
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-### 5. Start the dev server
-
-```bash
+SANDBOX_SNAPSHOT_ID=your_snapshot_id
+4. Run dev server
 pnpm dev
-```
+📡 API
+POST /api/chat
 
-Open [http://localhost:3000](http://localhost:3000) to use the computer use agent.
+Handles:
 
-## Environment Variables
+Streaming responses
+Tool invocation
+Mock AI logic (no paid API required)
+🎥 Demo
 
-| Variable | Required | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude |
-| `SANDBOX_SNAPSHOT_ID` | Yes | Vercel Sandbox snapshot with the desktop environment |
-| `VERCEL_OIDC_TOKEN` | Yes* | Auto-set by `vercel env pull` for Sandbox auth |
-| `VERCEL_TOKEN` | Alt* | Alternative to OIDC — a Vercel personal access token |
-| `VERCEL_TEAM_ID` | Alt* | Required with `VERCEL_TOKEN` |
-| `VERCEL_PROJECT_ID` | Alt* | Required with `VERCEL_TOKEN` |
+👉 Video Demo: (add your link here)
 
-\* Either `VERCEL_OIDC_TOKEN` (via `vercel env pull`) or the `VERCEL_TOKEN` + team/project IDs are required for Sandbox authentication.
+Covers:
+
+UI walkthrough
+Live agent execution
+Event tracking
+Session management
+Code overview
+🚧 Notes
+Mock AI is used to avoid API costs
+Tool execution is real (mouse + desktop)
+Some edge cases may return fallback responses instead of crashing
+Event durations are approximated (demo purpose)
+🧠 Key Decisions
+Used Zustand for lightweight global state
+Avoided unnecessary re-renders (especially VNC)
+Implemented event-driven architecture (important for scaling)
+Mocked AI layer to focus on frontend/system design
+✅ What’s Complete
+
+✔ Two-panel dashboard
+✔ Tool call visualization
+✔ Event pipeline
+✔ Session management
+✔ Streaming chat
+✔ Real desktop interaction
+
+📌 Future Improvements
+Replace mock AI with real model
+Improve event timing accuracy
+Add mobile responsiveness
+Add replay/debug timeline

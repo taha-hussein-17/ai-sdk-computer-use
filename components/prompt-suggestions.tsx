@@ -43,15 +43,16 @@ export const PromptSuggestions = ({
           key={index}
           variant="pill"
           size="pill"
+          className="rounded-full shadow-sm hover:shadow-md border border-zinc-200 bg-white hover:bg-zinc-50"
           onClick={() => submitPrompt(suggestion.prompt)}
           disabled={disabled}
         >
           <span>
-            <span className="text-black text-sm">
+            <span className="text-zinc-800 text-sm">
               {suggestion.text.toLowerCase()}
             </span>
           </span>
-          <ArrowUpRight className="ml-1 h-2 w-2 sm:h-3 sm:w-3 text-zinc-500 group-hover:opacity-70" />
+          <ArrowUpRight className="ml-1 h-2 w-2 sm:h-3 sm:w-3 text-zinc-500 transition-opacity group-hover:opacity-70" />
         </Button>
       ))}
     </div>

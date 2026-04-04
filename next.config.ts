@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
               "frame-ancestors 'self' https://*.vercel.app https://*.vercel.run",
               "connect-src 'self' https://*.vercel.app https://*.vercel.run",
               "img-src 'self' data: https://*.vercel.app https://*.vercel.run",
+              "media-src 'self' https://assets.mixkit.co",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.app https://*.vercel.run https://va.vercel-scripts.com",
               "style-src 'self' 'unsafe-inline'",
             ].join("; "),

@@ -4,7 +4,7 @@ import { PreviewMessage } from "@/components/message";
 import { getDesktopURL } from "@/lib/sandbox/utils";
 import { useScrollToBottom } from "@/lib/use-scroll-to-bottom";
 import { useChat } from "@ai-sdk/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Input } from "@/components/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -16,7 +16,10 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { ABORTED } from "@/lib/utils";
+import { ABORTED, cn } from "@/lib/utils";
+import { useEventStore } from "@/lib/store/event-store";
+import { useChatSessionStore } from "@/lib/store/chat-session-store";
+import { PlusIcon, MessageSquareIcon, TrashIcon } from "lucide-react";
 
 export default function Chat() {
   // Create separate refs for mobile and desktop to ensure both scroll properly
@@ -26,6 +29,18 @@ export default function Chat() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [sandboxId, setSandboxId] = useState<string | null>(null);
+
+  const addEvent = useEventStore((s) => s.addEvent);
+  const updateEvent = useEventStore((s) => s.updateEvent);
+  const setAgentStatus = useEventStore((s) => s.setAgentStatus);
+  
+  const sessions = useChatSessionStore((s) => s.sessions);
+  const activeSessionId = useChatSessionStore((s) => s.activeSessionId);
+  const createSession = useChatSessionStore((s) => s.createSession);
+  const deleteSession = useChatSessionStore((s) => s.deleteSession);
+  const setActiveSession = useChatSessionStore((s) => s.setActiveSession);
+  const updateMessages = useChatSessionStore((s) => s.updateMessages);
+  const setSessionTitle = useChatSessionStore((s) => s.setSessionTitle);
 
   const {
     messages,
@@ -38,11 +53,24 @@ export default function Chat() {
     setMessages,
   } = useChat({
     api: "/api/chat",
-    id: sandboxId ?? undefined,
+    id: activeSessionId ?? undefined,
+    initialMessages: sessions.find(s => s.id === activeSessionId)?.messages ?? [],
     body: {
       sandboxId,
     },
     maxSteps: 30,
+    onFinish: (message) => {
+      if (activeSessionId) {
+        // If it's the first message, update title
+        const currentSession = sessions.find(s => s.id === activeSessionId);
+        if (currentSession && currentSession.messages.length <= 2) {
+          const firstUserMessage = currentSession.messages.find(m => m.role === 'user');
+          if (firstUserMessage) {
+            setSessionTitle(activeSessionId, firstUserMessage.content.slice(0, 30) + '...');
+          }
+        }
+      }
+    },
     onError: (error) => {
       console.error(error);
       toast.error("There was an error", {
@@ -52,6 +80,79 @@ export default function Chat() {
       });
     },
   });
+
+  const lastSessionIdRef = useRef<string | null>(null);
+
+  // Sync messages from store when active session changes
+  useEffect(() => {
+    // Only sync and clear input if the session ID has actually changed
+    if (activeSessionId !== lastSessionIdRef.current) {
+      const session = useChatSessionStore.getState().sessions.find(s => s.id === activeSessionId);
+      if (session) {
+        setMessages(session.messages);
+      } else {
+        setMessages([]);
+      }
+      
+      // Clear input when switching or creating new chat
+      handleInputChange({ target: { value: "" } } as any);
+      
+      // Update the ref
+      lastSessionIdRef.current = activeSessionId;
+    }
+  }, [activeSessionId, setMessages, handleInputChange]);
+
+  // Sync messages to store whenever they change
+  useEffect(() => {
+    if (activeSessionId && messages.length > 0) {
+      updateMessages(activeSessionId, messages);
+    }
+  }, [messages, activeSessionId, updateMessages]);
+
+  // Ensure there's always at least one session
+  useEffect(() => {
+    const currentSessions = useChatSessionStore.getState().sessions;
+    if (currentSessions.length === 0) {
+      createSession();
+    } else if (!activeSessionId) {
+      setActiveSession(currentSessions[0].id);
+    }
+  }, [activeSessionId, createSession, setActiveSession]);
+
+  useEffect(() => {
+    setAgentStatus(status === "ready" ? "idle" : "running");
+  }, [status, setAgentStatus]);
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages.forEach((message: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      message.parts?.forEach((part: any) => {
+        if (part.type === "tool-invocation") {
+          const { toolCallId, toolName, state, args } = part.toolInvocation;
+          const events = useEventStore.getState().events;
+          const existingEvent = events.find((e) => e.id === toolCallId);
+
+          if (state === "call") {
+            if (!existingEvent) {
+              addEvent({
+                id: toolCallId,
+                type: toolName as "computer" | "bash",
+                action: toolName === "computer" ? args.action : "bash",
+                payload: args,
+              });
+            }
+          } else if (state === "result") {
+            if (existingEvent && existingEvent.status === "pending") {
+              updateEvent(toolCallId, {
+                status: "success",
+              });
+            }
+          }
+        }
+      });
+    });
+  }, [messages, addEvent, updateEvent]);
 
   const stop = () => {
     stopGeneration();
@@ -83,6 +184,115 @@ export default function Chat() {
   };
 
   const isLoading = status !== "ready";
+
+  const playSendSound = () => {
+    try {
+      const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3");
+      audio.volume = 0.5;
+      audio.play().catch(err => console.error("Error playing sound:", err));
+    } catch (err) {
+      console.error("Failed to play sound:", err);
+    }
+  };
+
+  const manualTriggerTool = async (action: string = "mouse_move", args: any = { coordinate: [500, 300] }) => {
+    if (!sandboxId) return;
+    
+    const toolCallId = `manual_${Date.now()}`;
+    
+    try {
+      console.log(`Triggering manual ${action}...`);
+      
+      // Manually add to event store
+      addEvent({
+        id: toolCallId,
+        type: "computer",
+        action: action as any,
+        payload: args,
+      });
+
+      const response = await fetch("/api/execute-tool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sandboxId,
+          action,
+          ...args,
+        }),
+      });
+
+      const data = await response.json();
+
+      // Update event store with success
+      updateEvent(toolCallId, {
+        status: "success",
+      });
+
+      return data.result;
+    } catch (err) {
+      console.error(`Manual tool trigger ${action} failed:`, err);
+      updateEvent(toolCallId, {
+        status: "error",
+      });
+    }
+  };
+
+  const triggerScreenshot = async () => {
+    if (!sandboxId) return;
+    
+    const toolCallId = `screenshot_${Date.now()}`;
+    const screenshotMessageId = `msg_screenshot_${Date.now()}`;
+    
+    setMessages(prev => [
+      ...prev,
+      {
+        id: screenshotMessageId,
+        role: 'assistant',
+        content: '',
+        parts: [{
+          type: 'tool-invocation',
+          toolInvocation: {
+            toolCallId,
+            toolName: 'computer',
+            state: 'call',
+            args: { action: 'screenshot' }
+          }
+        }]
+      } as any
+    ]);
+
+    try {
+      const result = await manualTriggerTool('screenshot', {});
+      
+      if (result && result.type === 'image') {
+        setMessages(prev => prev.map(m => 
+          m.id === screenshotMessageId 
+            ? {
+                ...m,
+                parts: [{
+                  type: 'tool-invocation',
+                  toolInvocation: {
+                    toolCallId,
+                    toolName: 'computer',
+                    state: 'result',
+                    args: { action: 'screenshot' },
+                    result: result
+                  }
+                }]
+              } as any
+            : m
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to get manual screenshot:", err);
+    }
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    playSendSound();
+    handleSubmit(e);
+  };
 
   const refreshDesktop = async () => {
     try {
@@ -173,9 +383,56 @@ export default function Chat() {
       {/* Resizable Panels */}
       <div className="w-full hidden xl:block">
         <ResizablePanelGroup direction="horizontal" className="h-full">
+          {/* Sidebar / Sessions Panel */}
+          <ResizablePanel
+            defaultSize={15}
+            minSize={10}
+            className="flex flex-col border-r border-zinc-200 bg-zinc-50"
+          >
+            <div className="p-4 border-b border-zinc-200 bg-white flex items-center justify-between">
+              <span className="font-bold text-sm uppercase tracking-tighter">Chats</span>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={createSession}
+                className="h-8 w-8 hover:bg-zinc-100"
+              >
+                <PlusIcon size={16} />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {sessions.map((s) => (
+                <div
+                  key={s.id}
+                  onClick={() => setActiveSession(s.id)}
+                  className={cn(
+                    "group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all text-xs",
+                    activeSessionId === s.id 
+                      ? "bg-white border border-zinc-200 shadow-sm font-medium" 
+                      : "hover:bg-zinc-200/50 text-zinc-500"
+                  )}
+                >
+                  <MessageSquareIcon size={14} className={activeSessionId === s.id ? "text-blue-500" : ""} />
+                  <span className="flex-1 truncate">{s.title}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteSession(s.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 transition-opacity"
+                  >
+                    <TrashIcon size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </ResizablePanel>
+
+          <ResizableHandle withHandle />
+
           {/* Desktop Stream Panel */}
           <ResizablePanel
-            defaultSize={70}
+            defaultSize={55}
             minSize={40}
             className="bg-black relative items-center justify-center"
           >
@@ -247,7 +504,7 @@ export default function Chat() {
               />
             )}
             <div className="bg-white">
-              <form onSubmit={handleSubmit} className="p-4">
+              <form onSubmit={handleFormSubmit} className="p-4">
                 <Input
                   handleInputChange={handleInputChange}
                   input={input}
@@ -295,7 +552,7 @@ export default function Chat() {
           />
         )}
         <div className="bg-white">
-          <form onSubmit={handleSubmit} className="p-4">
+          <form onSubmit={handleFormSubmit} className="p-4">
             <Input
               handleInputChange={handleInputChange}
               input={input}
