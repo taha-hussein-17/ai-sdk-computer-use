@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { JSXElementConstructor, ReactElement, ReactNode, ReactPortal, useState } from "react";
 import { useToolEvents, useAgentStatus, useEventStore, useEventCountsByAction } from "@/lib/store/event-store";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -97,7 +97,7 @@ export function DebugPanel() {
                   <span>Waiting for events...</span>
                 </div>
               ) : (
-                events.slice().reverse().map((event) => (
+                events.slice().reverse().map((event: { id: any; timestamp: number; type: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; action: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; status: string; payload: any; duration: number; }) => (
                   <motion.div 
                     layout
                     initial={{ opacity: 0, x: 20 }}

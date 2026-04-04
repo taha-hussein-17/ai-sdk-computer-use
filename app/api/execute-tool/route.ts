@@ -21,6 +21,7 @@ const result = await tool.execute({ action, ...args } as any, {
   messages: [],
 } as any);
 
+
     return NextResponse.json({ result });
   } catch (error) {
     console.error("Manual tool execution failed:", error);
