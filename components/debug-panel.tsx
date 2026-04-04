@@ -58,38 +58,38 @@ export function DebugPanel() {
 
       {isOpen && (
         <div className="flex flex-col flex-1 overflow-hidden">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between px-2 py-1.5 bg-zinc-50 border-b border-zinc-200 shrink-0">
-              <span className="text-zinc-600 uppercase text-[9px] font-bold">
-                {events.length} events recorded
-              </span>
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  clearEvents();
-                }}
-                className="p-1 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
-                title="Clear all events"
-              >
-                <Trash2 size={12} />
-              </button>
-            </div>
+          {/* Toolbar */}
+          <div className="flex items-center justify-between px-2 py-1.5 bg-zinc-50 border-b border-zinc-200 shrink-0">
+            <span className="text-zinc-600 uppercase text-[9px] font-bold">
+              {events.length} events recorded
+            </span>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                clearEvents();
+              }}
+              className="p-1 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
+              title="Clear all events"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
 
-            <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white border-b border-zinc-200 shrink-0 flex-wrap">
-              {Object.entries(counts).map(([key, value]) => (
-                <div key={key} className="px-1.5 py-0.5 rounded bg-zinc-100 text-[9px] font-bold text-zinc-700">
-                  {key}: {value}
-                </div>
-              ))}
-            </div>
+          <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white border-b border-zinc-200 shrink-0 flex-wrap">
+            {Object.entries(counts).map(([key, value]) => (
+              <div key={key} className="px-1.5 py-0.5 rounded bg-zinc-100 text-[9px] font-bold text-zinc-700">
+                {key}: {value}
+              </div>
+            ))}
+          </div>
 
-            {/* Event List */}
-            <div className="flex-1 overflow-y-auto overscroll-contain bg-zinc-50/50 p-2 space-y-1.5">
-              {events.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-zinc-400 opacity-50 space-y-2 italic">
-                  <span>Waiting for events...</span>
-                </div>
-              ) : (
+          {/* Event List */}
+          <div className="flex-1 overflow-y-auto overscroll-contain bg-zinc-50/50 p-2 space-y-1.5">
+            {events.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-zinc-400 opacity-50 space-y-2 italic">
+                <span>Waiting for events...</span>
+              </div>
+            ) : (
               events.slice().reverse().map((event: { id: any; timestamp: number; type: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; action: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; status: string; payload: any; duration: number; }) => (
                   <div 
                     key={event.id + event.timestamp} 
@@ -127,8 +127,8 @@ export function DebugPanel() {
                     </div>
                   </div>
                 ))
-              )}
-            </div>
+            )}
+          </div>
         </div>
       )}
     </div>

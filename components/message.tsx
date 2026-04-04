@@ -73,7 +73,7 @@ const PurePreviewMessage = ({
               : "bg-secondary text-secondary-foreground"
           )}
         >
-          <Streamdown>{part.text}</Streamdown>
+          <Streamdown>{(part as any).text ?? ""}</Streamdown> 
         </div>
       </motion.div>
     );
@@ -108,7 +108,7 @@ const PurePreviewMessage = ({
   }
 
   case "tool-invocation": {
-    const { toolName, toolCallId, state, args } = part.toolInvocation;
+    const { toolName, toolCallId, state, args } = (part as any).toolInvocation;
 
     if (toolName === "computer") {
       const {
@@ -217,7 +217,7 @@ const PurePreviewMessage = ({
                   <StopCircle className="h-4 w-4 text-red-500" />
                 )
               ) : state === "result" ? (
-                part.toolInvocation.result === ABORTED ? (
+                (part as any).toolInvocation?.result === ABORTED ? (
                   <CircleSlash className="text-yellow-600" size={14} />
                 ) : (
                   <CheckCircle className="text-green-600" size={14} />
@@ -227,10 +227,10 @@ const PurePreviewMessage = ({
           </div>
 
           {state === "result" &&
-          part.toolInvocation.result?.type === "image" ? (
+          (part as any).toolInvocation?.result?.type === "image" ? (
             <div className="p-2">
               <img
-                src={`data:image/png;base64,${part.toolInvocation.result.data}`}
+                src={`data:image/png;base64,${(part as any).toolInvocation.result?.data ?? ""}`}
                 alt="Generated"
                 className="w-full aspect-[1024/768] rounded-xl border border-zinc-200"
               />
