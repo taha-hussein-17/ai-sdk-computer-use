@@ -12,10 +12,14 @@ export async function POST(req: Request) {
     const tool = computerTool(sandboxId);
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await tool.execute({ action, ...args } as any, { 
-      toolCallId: `manual_${Date.now()}`,
-      messages: [] 
-    } as any);
+    if (!tool || !tool.execute) {
+  return new Response("Tool not found", { status: 400 });
+}
+
+const result = await tool.execute({ action, ...args } as any, {
+  toolCallId: `manual_${Date.now()}`,
+  messages: [],
+} as any);
 
     return NextResponse.json({ result });
   } catch (error) {
