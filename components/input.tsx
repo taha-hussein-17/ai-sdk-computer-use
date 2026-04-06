@@ -19,12 +19,12 @@ export const Input = ({
   stop,
 }: InputProps) => {
   return (
-    <div className="relative w-full">
+    <div className="relative w-full group">
       <ShadcnInput
-        className="bg-white border border-zinc-200 py-6 w-full rounded-2xl pr-12 shadow-sm focus:shadow-md transition-shadow"
+        className="bg-zinc-900/40 border border-zinc-800/50 py-6 w-full rounded-2xl pr-14 text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-700/50 focus:ring-1 focus:ring-zinc-700/20 transition-all duration-300 backdrop-blur-sm font-normal"
         value={input}
         autoFocus
-        placeholder={"Tell me what to do..."}
+        placeholder={"What should I do on the computer?"}
         onChange={handleInputChange}
         disabled={isLoading || isInitializing}
       />
@@ -32,34 +32,19 @@ export const Input = ({
         <button
           type="button"
           onClick={stop}
-          className="cursor-pointer absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 bg-black hover:bg-zinc-800 disabled:bg-zinc-300 disabled:cursor-not-allowed transition-colors shadow-sm hover:shadow-md"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl p-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all duration-200"
         >
-          <div className="animate-spin h-4 w-4">
-            <svg className="h-4 w-4 text-white" viewBox="0 0 24 24">
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="none"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
+          <div className="size-4 flex items-center justify-center">
+            <div className="size-2 bg-red-500 rounded-sm animate-pulse" />
           </div>
         </button>
       ) : (
         <button
           type="submit"
           disabled={isLoading || !input.trim() || isInitializing}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 bg-black hover:bg-zinc-800 disabled:bg-zinc-300 disabled:cursor-not-allowed transition-colors shadow-sm hover:shadow-md hover:-translate-y-[55%] active:scale-[0.98] transition-transform"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl p-2.5 bg-zinc-100 hover:bg-white text-zinc-950 disabled:bg-zinc-800 disabled:text-zinc-600 transition-all duration-200 shadow-lg shadow-white/5 active:scale-95"
         >
-          <ArrowUp className="h-4 w-4 text-white" />
+          <ArrowUp className="h-4 w-4" />
         </button>
       )}
     </div>

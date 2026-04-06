@@ -4,7 +4,7 @@ import { PreviewMessage } from "@/components/message";
 import { getDesktopURL } from "@/lib/sandbox/utils";
 import { useScrollToBottom } from "@/lib/use-scroll-to-bottom";
 import { useChat } from "@ai-sdk/react";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Input } from "@/components/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -19,13 +19,10 @@ import {
 import { ABORTED, cn } from "@/lib/utils";
 import { useEventStore } from "@/lib/store/event-store";
 import { useChatSessionStore } from "@/lib/store/chat-session-store";
-import { PlusIcon, MessageSquareIcon, TrashIcon } from "lucide-react";
+import { PlusIcon, MessageSquareIcon, TrashIcon, Loader2, CircleSlash } from "lucide-react";
 
 export default function Chat() {
-  // Create separate refs for mobile and desktop to ensure both scroll properly
   const [desktopContainerRef, desktopEndRef] = useScrollToBottom();
-  const [mobileContainerRef, mobileEndRef] = useScrollToBottom();
-
   const [isInitializing, setIsInitializing] = useState(true);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [sandboxId, setSandboxId] = useState<string | null>(null);
@@ -58,15 +55,17 @@ export default function Chat() {
     body: {
       sandboxId,
     },
-    maxSteps: 30,
+    maxSteps: 5,
     onFinish: (message) => {
       if (activeSessionId) {
-        // If it's the first message, update title
-        const currentSession = sessions.find(s => s.id === activeSessionId);
-        if (currentSession && currentSession.messages.length <= 2) {
+        const currentSession = useChatSessionStore.getState().sessions.find(s => s.id === activeSessionId);
+        if (currentSession && (currentSession.title === "Untitled Session" || !currentSession.title)) {
           const firstUserMessage = currentSession.messages.find(m => m.role === 'user');
           if (firstUserMessage) {
-            setSessionTitle(activeSessionId, firstUserMessage.content.slice(0, 30) + '...');
+            const title = typeof firstUserMessage.content === 'string' 
+              ? firstUserMessage.content.slice(0, 40) 
+              : "New Chat";
+            setSessionTitle(activeSessionId, title);
           }
         }
       }
@@ -83,9 +82,7 @@ export default function Chat() {
 
   const lastSessionIdRef = useRef<string | null>(null);
 
-  // Sync messages from store when active session changes
   useEffect(() => {
-    // Only sync and clear input if the session ID has actually changed
     if (activeSessionId !== lastSessionIdRef.current) {
       const session = useChatSessionStore.getState().sessions.find(s => s.id === activeSessionId);
       if (session) {
@@ -93,23 +90,17 @@ export default function Chat() {
       } else {
         setMessages([]);
       }
-      
-      // Clear input when switching or creating new chat
       handleInputChange({ target: { value: "" } } as any);
-      
-      // Update the ref
       lastSessionIdRef.current = activeSessionId;
     }
   }, [activeSessionId, setMessages, handleInputChange]);
 
-  // Sync messages to store whenever they change
   useEffect(() => {
     if (activeSessionId && messages.length > 0) {
       updateMessages(activeSessionId, messages);
     }
   }, [messages, activeSessionId, updateMessages]);
 
-  // Ensure there's always at least one session
   useEffect(() => {
     const currentSessions = useChatSessionStore.getState().sessions;
     if (currentSessions.length === 0) {
@@ -124,9 +115,7 @@ export default function Chat() {
   }, [status, setAgentStatus]);
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     messages.forEach((message: any) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       message.parts?.forEach((part: any) => {
         if (part.type === "tool-invocation") {
           const { toolCallId, toolName, state, args } = part.toolInvocation;
@@ -137,8 +126,8 @@ export default function Chat() {
             if (!existingEvent) {
               addEvent({
                 id: toolCallId,
-                type: toolName as "computer" | "bash",
-                action: toolName === "computer" ? args.action : "bash",
+                type: toolName as "computer" | "bash" | "play_sound",
+                action: toolName === "computer" ? args.action : toolName,
                 payload: args,
               });
             }
@@ -156,7 +145,6 @@ export default function Chat() {
 
   const stop = () => {
     stopGeneration();
-
     const lastMessage = messages.at(-1);
     const lastMessageLastPart = lastMessage?.parts.at(-1);
     if (
@@ -185,120 +173,11 @@ export default function Chat() {
 
   const isLoading = status !== "ready";
 
-  const playSendSound = () => {
-    try {
-      const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3");
-      audio.volume = 0.5;
-      audio.play().catch(err => console.error("Error playing sound:", err));
-    } catch (err) {
-      console.error("Failed to play sound:", err);
-    }
-  };
-
-  const manualTriggerTool = async (action: string = "mouse_move", args: any = { coordinate: [500, 300] }) => {
-    if (!sandboxId) return;
-    
-    const toolCallId = `manual_${Date.now()}`;
-    
-    try {
-      console.log(`Triggering manual ${action}...`);
-      
-      // Manually add to event store
-      addEvent({
-        id: toolCallId,
-        type: "computer",
-        action: action as any,
-        payload: args,
-      });
-
-      const response = await fetch("/api/execute-tool", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sandboxId,
-          action,
-          ...args,
-        }),
-      });
-
-      const data = await response.json();
-
-      // Update event store with success
-      updateEvent(toolCallId, {
-        status: "success",
-      });
-
-      return data.result;
-    } catch (err) {
-      console.error(`Manual tool trigger ${action} failed:`, err);
-      updateEvent(toolCallId, {
-        status: "error",
-      });
-    }
-  };
-
-  const triggerScreenshot = async () => {
-    if (!sandboxId) return;
-    
-    const toolCallId = `screenshot_${Date.now()}`;
-    const screenshotMessageId = `msg_screenshot_${Date.now()}`;
-    
-    setMessages(prev => [
-      ...prev,
-      {
-        id: screenshotMessageId,
-        role: 'assistant',
-        content: '',
-        parts: [{
-          type: 'tool-invocation',
-          toolInvocation: {
-            toolCallId,
-            toolName: 'computer',
-            state: 'call',
-            args: { action: 'screenshot' }
-          }
-        }]
-      } as any
-    ]);
-
-    try {
-      const result = await manualTriggerTool('screenshot', {});
-      
-      if (result && result.type === 'image') {
-        setMessages(prev => prev.map(m => 
-          m.id === screenshotMessageId 
-            ? {
-                ...m,
-                parts: [{
-                  type: 'tool-invocation',
-                  toolInvocation: {
-                    toolCallId,
-                    toolName: 'computer',
-                    state: 'result',
-                    args: { action: 'screenshot' },
-                    result: result
-                  }
-                }]
-              } as any
-            : m
-        ));
-      }
-    } catch (err) {
-      console.error("Failed to get manual screenshot:", err);
-    }
-  };
-
-  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    playSendSound();
-    handleSubmit(e);
-  };
-
-  const refreshDesktop = async () => {
+   
+  const refreshDesktop = useCallback(async () => {
     try {
       setIsInitializing(true);
       const { streamUrl, id } = await getDesktopURL(sandboxId || undefined);
-      // console.log("Refreshed desktop connection with ID:", id);
       setStreamUrl(streamUrl);
       setSandboxId(id);
     } catch (err) {
@@ -306,264 +185,231 @@ export default function Chat() {
     } finally {
       setIsInitializing(false);
     }
-  };
-
-  // Kill desktop on page close
-  useEffect(() => {
-    if (!sandboxId) return;
-
-    // Function to kill the desktop - just one method to reduce duplicates
-    const killDesktop = () => {
-      if (!sandboxId) return;
-
-      // Use sendBeacon which is best supported across browsers
-      navigator.sendBeacon(
-        `/api/kill-desktop?sandboxId=${encodeURIComponent(sandboxId)}`,
-      );
-    };
-
-    // Detect iOS / Safari
-    const isIOS =
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
-    // Choose exactly ONE event handler based on the browser
-    if (isIOS || isSafari) {
-      // For Safari on iOS, use pagehide which is most reliable
-      window.addEventListener("pagehide", killDesktop);
-
-      return () => {
-        window.removeEventListener("pagehide", killDesktop);
-        // Also kill desktop when component unmounts
-        killDesktop();
-      };
-    } else {
-      // For all other browsers, use beforeunload
-      window.addEventListener("beforeunload", killDesktop);
-
-      return () => {
-        window.removeEventListener("beforeunload", killDesktop);
-        // Also kill desktop when component unmounts
-        killDesktop();
-      };
-    }
   }, [sandboxId]);
 
   useEffect(() => {
-    // Initialize desktop and get stream URL when the component mounts
-    const init = async () => {
-      try {
-        setIsInitializing(true);
-
-        // Use the provided ID or create a new one
-        const { streamUrl, id } = await getDesktopURL(sandboxId ?? undefined);
-
-        setStreamUrl(streamUrl);
-        setSandboxId(id);
-      } catch (err) {
-        console.error("Failed to initialize desktop:", err);
-        toast.error("Failed to initialize desktop");
-      } finally {
-        setIsInitializing(false);
-      }
+    if (!sandboxId) return;
+    const killDesktop = () => {
+      if (!sandboxId) return;
+      navigator.sendBeacon(`/api/kill-desktop?sandboxId=${encodeURIComponent(sandboxId)}`);
     };
+    window.addEventListener("beforeunload", killDesktop);
+    return () => {
+      window.removeEventListener("beforeunload", killDesktop);
+      killDesktop();
+    };
+  }, [sandboxId]);
 
-    init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => {
+    refreshDesktop();
+  }, [refreshDesktop]);
+
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    handleSubmit(e);
+  };
 
   return (
-    <div className="flex h-dvh relative">
-      {/* Mobile/tablet banner */}
-      <div className="flex items-center justify-center fixed left-1/2 -translate-x-1/2 top-5 shadow-md text-xs mx-auto rounded-lg h-8 w-fit bg-blue-600 text-white px-3 py-2 text-left z-50 xl:hidden">
-        <span>Headless mode</span>
-      </div>
-
-      {/* Resizable Panels */}
-      <div className="w-full hidden xl:block">
-        <ResizablePanelGroup direction="horizontal" className="h-full">
-          {/* Sidebar / Sessions Panel */}
-          <ResizablePanel
-            defaultSize={15}
-            minSize={10}
-            className="flex flex-col border-r border-zinc-200 bg-zinc-50"
-          >
-            <div className="p-4 border-b border-zinc-200 bg-white flex items-center justify-between">
-              <span className="font-bold text-sm uppercase tracking-tighter">Chats</span>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={createSession}
-                className="h-8 w-8 hover:bg-zinc-100"
-              >
-                <PlusIcon size={16} />
-              </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              {sessions.map((s) => (
-                <div
-                  key={s.id}
-                  onClick={() => setActiveSession(s.id)}
-                  className={cn(
-                    "group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all text-xs",
-                    activeSessionId === s.id 
-                      ? "bg-white border border-zinc-200 shadow-sm font-medium" 
-                      : "hover:bg-zinc-200/50 text-zinc-500"
-                  )}
-                >
-                  <MessageSquareIcon size={14} className={activeSessionId === s.id ? "text-blue-500" : ""} />
-                  <span className="flex-1 truncate">{s.title}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteSession(s.id);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 transition-opacity"
-                  >
-                    <TrashIcon size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </ResizablePanel>
-
-          <ResizableHandle withHandle />
-
-          {/* Desktop Stream Panel */}
-          <ResizablePanel
-            defaultSize={55}
-            minSize={40}
-            className="bg-black relative items-center justify-center"
-          >
-            {streamUrl ? (
-              <>
-                <iframe
-                  src={streamUrl}
-                  className="w-full h-full"
-                  style={{
-                    transformOrigin: "center",
-                    width: "100%",
-                    height: "100%",
-                  }}
-                  allow="autoplay"
-                />
-                <Button
-                  onClick={refreshDesktop}
-                  className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white px-3 py-1 rounded text-sm z-10"
-                  disabled={isInitializing}
-                >
-                  {isInitializing ? "Creating desktop..." : "New desktop"}
-                </Button>
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-full text-white">
-                {isInitializing
-                  ? "Initializing desktop..."
-                  : "Loading stream..."}
-              </div>
-            )}
-          </ResizablePanel>
-
-          <ResizableHandle withHandle />
-
-          {/* Chat Interface Panel */}
-          <ResizablePanel
-            defaultSize={30}
-            minSize={25}
-            className="flex flex-col border-l border-zinc-200"
-          >
-            <div className="bg-white py-4 px-4 flex justify-between items-center">
-              <AISDKLogo />
-              <DeployButton />
-            </div>
-
-            <div
-              className="flex-1 space-y-6 py-4 overflow-y-auto px-4"
-              ref={desktopContainerRef}
-            >
-              {messages.length === 0 ? <ProjectInfo /> : null}
-              {messages.map((message, i) => (
-                <PreviewMessage
-                  message={message}
-                  key={message.id}
-                  isLoading={isLoading}
-                  status={status}
-                  isLatestMessage={i === messages.length - 1}
-                />
-              ))}
-              <div ref={desktopEndRef} className="pb-2" />
-            </div>
-
-            {messages.length === 0 && (
-              <PromptSuggestions
-                disabled={isInitializing}
-                submitPrompt={(prompt: string) =>
-                  append({ role: "user", content: prompt })
-                }
-              />
-            )}
-            <div className="bg-white">
-              <form onSubmit={handleFormSubmit} className="p-4">
-                <Input
-                  handleInputChange={handleInputChange}
-                  input={input}
-                  isInitializing={isInitializing}
-                  isLoading={isLoading}
-                  status={status}
-                  stop={stop}
-                />
-              </form>
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
-
-      {/* Mobile View (Chat Only) */}
-      <div className="w-full xl:hidden flex flex-col">
-        <div className="bg-white py-4 px-4 flex justify-between items-center">
-          <AISDKLogo />
-          <DeployButton />
-        </div>
-
-        <div
-          className="flex-1 space-y-6 py-4 overflow-y-auto px-4"
-          ref={mobileContainerRef}
+    <main className="flex h-screen w-full bg-[#0a0a0a] text-zinc-100 overflow-hidden font-sans">
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
+        {/* Sidebar - History on the Left */}
+        <ResizablePanel
+          defaultSize={20}
+          minSize={15}
+          maxSize={30}
+          className="hidden md:flex flex-col border-r border-zinc-800/50 bg-[#0f0f0f]/80 backdrop-blur-xl"
         >
-          {messages.length === 0 ? <ProjectInfo /> : null}
-          {messages.map((message, i) => (
-            <PreviewMessage
-              message={message}
-              key={message.id}
-              isLoading={isLoading}
-              status={status}
-              isLatestMessage={i === messages.length - 1}
-            />
-          ))}
-          <div ref={mobileEndRef} className="pb-2" />
-        </div>
+          <div className="p-6 border-b border-zinc-800/50">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="size-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <AISDKLogo />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-400">
+                  AI SDK
+                </h1>
+                <p className="text-xs text-zinc-500 font-medium tracking-wide uppercase">
+                  Computer Use Agent
+                </p>
+              </div>
+            </div>
+            
+            <Button
+               onClick={() => createSession()}
+               className="w-full justify-start gap-2 bg-zinc-100 text-zinc-950 hover:bg-white rounded-xl h-11 transition-all duration-200 active:scale-95 font-semibold text-sm shadow-lg shadow-white/5"
+             >
+               <PlusIcon className="size-4" />
+               New Session
+             </Button>
+          </div>
 
-        {messages.length === 0 && (
-          <PromptSuggestions
-            disabled={isInitializing}
-            submitPrompt={(prompt: string) =>
-              append({ role: "user", content: prompt })
-            }
-          />
-        )}
-        <div className="bg-white">
-          <form onSubmit={handleFormSubmit} className="p-4">
-            <Input
-              handleInputChange={handleInputChange}
-              input={input}
-              isInitializing={isInitializing}
-              isLoading={isLoading}
-              status={status}
-              stop={stop}
-            />
-          </form>
-        </div>
-      </div>
-    </div>
+          <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                onClick={() => setActiveSession(session.id)}
+                className={cn(
+                  "group flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200",
+                  activeSessionId === session.id
+                    ? "bg-zinc-800/50 text-white ring-1 ring-zinc-700/50"
+                    : "text-zinc-500 hover:bg-zinc-900/40 hover:text-zinc-300"
+                )}
+              >
+                <MessageSquareIcon className="size-4 shrink-0" />
+                <span className="flex-1 truncate text-[13px] font-medium tracking-tight">
+                  {session.title || "Untitled Session"}
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteSession(session.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-zinc-800 rounded-lg transition-all"
+                >
+                  <TrashIcon className="size-3.5 text-zinc-500 hover:text-red-400" />
+                </button>
+              </div>
+            ))}
+          </div>
+          
+          <div className="p-4 border-t border-zinc-800/50">
+             <ProjectInfo />
+          </div>
+        </ResizablePanel>
+
+        <ResizableHandle className="bg-zinc-800/50 w-[1px]" />
+
+        {/* Main Content Area - Desktop Preview (Left) then Chat (Right) */}
+        <ResizablePanel defaultSize={80} className="flex flex-col bg-[#0a0a0a]">
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            
+            {/* Desktop Preview Area */}
+            <ResizablePanel defaultSize={60} minSize={40} className="hidden md:flex flex-col bg-[#050505]">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/50 bg-[#0a0a0a]/50 backdrop-blur-md">
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1.5">
+                    <div className="size-3 rounded-full bg-red-500/20 border border-red-500/30" />
+                    <div className="size-3 rounded-full bg-amber-500/20 border border-amber-500/30" />
+                    <div className="size-3 rounded-full bg-green-500/20 border border-green-500/30" />
+                  </div>
+                  <span className="text-[11px] font-bold text-zinc-500 ml-2 tracking-[0.2em] uppercase">
+                    Sandbox Desktop Preview
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={refreshDesktop}
+                    disabled={isInitializing}
+                    className="h-8 text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg"
+                  >
+                    Refresh
+                  </Button>
+                  <DeployButton />
+                </div>
+              </div>
+
+              <div className="flex-1 relative flex items-center justify-center p-8 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900 to-[#050505]">
+                <div className="relative w-full aspect-video max-w-5xl rounded-2xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-zinc-800/50 group">
+                  {isInitializing ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 gap-4">
+                      <Loader2 className="size-8 text-blue-500 animate-spin" />
+                      <p className="text-zinc-500 text-[13px] font-semibold tracking-tight animate-pulse">Initializing Virtual Desktop...</p>
+                    </div>
+                  ) : streamUrl ? (
+                    <iframe
+                      src={streamUrl}
+                      className="w-full h-full border-none"
+                      title="Desktop Preview"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 gap-4">
+                      <div className="size-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+                        <CircleSlash className="size-8 text-zinc-700" />
+                      </div>
+                      <p className="text-zinc-500 text-[13px] font-semibold tracking-tight">Virtual desktop not connected</p>
+                       <Button onClick={refreshDesktop} variant="outline" className="mt-2 h-9 rounded-xl border-zinc-800 text-zinc-400 hover:bg-zinc-900 hover:text-white font-medium text-xs">
+                         Establish Connection
+                       </Button>
+                    </div>
+                  )}
+                  
+                  {status === "streaming" && (
+                    <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 backdrop-blur-md rounded-full">
+                      <div className="size-2 bg-blue-500 rounded-full animate-ping" />
+                      <span className="text-[10px] font-bold text-blue-500 uppercase tracking-tighter">AI Controlling</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </ResizablePanel>
+
+            <ResizableHandle className="bg-zinc-800/50 w-[1px]" />
+
+            {/* Chat Area (Right Side) */}
+            <ResizablePanel defaultSize={40} minSize={30} className="flex flex-col relative bg-[#0a0a0a]">
+              <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none" />
+              
+              <div className="flex-1 overflow-y-auto no-scrollbar pt-20 pb-32 px-6" ref={desktopContainerRef}>
+                {messages.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center">
+                    <div className="size-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-6 animate-pulse">
+                      <div className="text-zinc-400 size-8">
+                        <AISDKLogo />
+                      </div>
+                    </div>
+                    <h2 className="text-2xl font-bold mb-2 tracking-tight">How can I assist you today?</h2>
+                    <p className="text-zinc-400 max-w-sm mb-8 leading-relaxed text-sm">
+                      I can manage your desktop, automate workflows, and handle complex browser tasks with the power of AI SDK.
+                    </p>
+                    <PromptSuggestions
+                      disabled={isInitializing}
+                      submitPrompt={(prompt: string) => append({ role: "user", content: prompt })}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {messages.map((message, index) => (
+                      <PreviewMessage
+                        key={message.id}
+                        message={message}
+                        isLatestMessage={index === messages.length - 1}
+                        status={status}
+                        isLoading={isLoading}
+                      />
+                    ))}
+                    <div ref={desktopEndRef} />
+                  </div>
+                )}
+              </div>
+
+              {/* Chat Input Area */}
+              <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent">
+                <div className="max-w-3xl mx-auto">
+                  <form
+                    onSubmit={handleFormSubmit}
+                    className="relative group bg-zinc-900/50 border border-zinc-800 rounded-2xl p-1.5 focus-within:border-zinc-700 transition-all duration-300 backdrop-blur-md shadow-2xl"
+                  >
+                    <Input
+                      handleInputChange={handleInputChange}
+                      input={input}
+                      isInitializing={isInitializing}
+                      isLoading={isLoading}
+                      status={status}
+                      stop={stop}
+                    />
+                  </form>
+                  <p className="text-[10px] text-center mt-3 text-zinc-600 font-medium tracking-tight">
+                    AI can make mistakes. Check important info.
+                  </p>
+                </div>
+              </div>
+            </ResizablePanel>
+
+          </ResizablePanelGroup>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </main>
   );
 }

@@ -7,7 +7,7 @@ export interface ToolEvent {
   id: string;
   timestamp: number;
   startTime: number;
-  type: 'computer' | 'bash';
+  type: 'computer' | 'bash' | 'play_sound';
   action: string;
   payload: any;
   status: ToolEventStatus;

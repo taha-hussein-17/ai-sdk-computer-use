@@ -43,16 +43,14 @@ export const PromptSuggestions = ({
           key={index}
           variant="pill"
           size="pill"
-          className="rounded-full shadow-sm hover:shadow-md border border-zinc-200 bg-white hover:bg-zinc-50"
+          className="rounded-full shadow-lg shadow-black/20 border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800/80 hover:border-zinc-700 text-zinc-300 hover:text-white transition-all duration-300 backdrop-blur-sm"
           onClick={() => submitPrompt(suggestion.prompt)}
           disabled={disabled}
         >
-          <span>
-            <span className="text-zinc-800 text-sm">
-              {suggestion.text.toLowerCase()}
-            </span>
+          <span className="text-[13px] font-medium tracking-tight">
+            {suggestion.text}
           </span>
-          <ArrowUpRight className="ml-1 h-2 w-2 sm:h-3 sm:w-3 text-zinc-500 transition-opacity group-hover:opacity-70" />
+          <ArrowUpRight className="ml-1.5 h-3 w-3 text-zinc-500 transition-colors group-hover:text-zinc-300" />
         </Button>
       ))}
     </div>

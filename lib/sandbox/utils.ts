@@ -1,13 +1,34 @@
 "use server";
 
-import { Sandbox } from "@vercel/sandbox";
-import { resolution } from "./tool";
+import type { Sandbox as SandboxType } from "@vercel/sandbox";
+import os from "node:os";
+import { resolution } from "./constants";
+
+// The SDK uses 'xdg-app-paths' which can fail on Windows if HOME/XDG_* are missing.
+// This must run at the top level to ensure it's set before any imports that use it.
+if (process.platform === "win32") {
+  const homeDir = process.env.USERPROFILE || os.homedir() || process.cwd();
+
+  if (!process.env.HOME) process.env.HOME = homeDir;
+  if (!process.env.APPDATA)
+    process.env.APPDATA = `${homeDir}\\AppData\\Roaming`;
+  if (!process.env.LOCALAPPDATA)
+    process.env.LOCALAPPDATA = `${homeDir}\\AppData\\Local`;
+
+  if (!process.env.XDG_CONFIG_HOME) process.env.XDG_CONFIG_HOME = process.env.APPDATA;
+  if (!process.env.XDG_DATA_HOME) process.env.XDG_DATA_HOME = process.env.LOCALAPPDATA;
+  if (!process.env.XDG_CACHE_HOME)
+    process.env.XDG_CACHE_HOME =
+      process.env.TEMP || `${homeDir}\\AppData\\Local\\Temp`;
+}
 
 const NOVNC_PORT = 6080;
 const DISPLAY_ENV = { DISPLAY: ":99" };
 
 export const getDesktop = async (id?: string) => {
   try {
+    const { Sandbox } = await import("@vercel/sandbox");
+
     if (id) {
       const sandbox = await Sandbox.get({ sandboxId: id });
       if (sandbox.status === "running") {
@@ -15,10 +36,18 @@ export const getDesktop = async (id?: string) => {
       }
     }
 
+    // Use a fallback and clean up any quotes from the environment variable
+    const rawSnapshotId = process.env.SANDBOX_SNAPSHOT_ID;
+    const snapshotId = (rawSnapshotId && rawSnapshotId !== 'undefined') 
+      ? rawSnapshotId.replace(/['"]/g, '') 
+      : 'snap_CRBYhAcOn9pFNXLkdmiRgNTG5QMM';
+    
+    console.log(`Creating sandbox with snapshotId: "${snapshotId}"`);
+    
     const sandbox = await Sandbox.create({
       source: {
         type: "snapshot",
-        snapshotId: process.env.SANDBOX_SNAPSHOT_ID!,
+        snapshotId: snapshotId,
       },
       timeout: 300000,
       ports: [NOVNC_PORT],
@@ -73,7 +102,7 @@ lib.XCloseDisplay(d)`,
   }
 };
 
-async function waitForNoVNC(sandbox: Sandbox, maxRetries = 20) {
+async function waitForNoVNC(sandbox: SandboxType, maxRetries = 20) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const result = await sandbox.runCommand({
@@ -110,6 +139,7 @@ export const getDesktopURL = async (id?: string) => {
 
 export const killDesktop = async (id: string) => {
   try {
+    const { Sandbox } = await import("@vercel/sandbox");
     const sandbox = await Sandbox.get({ sandboxId: id });
     await sandbox.stop();
   } catch (error) {

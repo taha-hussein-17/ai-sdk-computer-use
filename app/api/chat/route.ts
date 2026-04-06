@@ -1,198 +1,132 @@
-import { streamText } from "ai";
+import { streamText, createDataStreamResponse } from "ai";
 import { computerTool, bashTool } from "@/lib/sandbox/tool";
 
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const { messages = [], sandboxId } = body;
-    const simplifiedMessages = messages
-      .filter((m: any) => m.role === "user" || m.role === "assistant")
-      .map((m: any) => ({
-        role: m.role,
-        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-      }));
+    const { messages = [], sandboxId } = await req.json();
 
-    // A helper to safely extract query from user messages
-    const getQuery = (msgs: any[]) => {
-      const lastUser = msgs.filter((m) => m.role === 'user').at(-1);
-      if (!lastUser) return "";
-      if (typeof lastUser.content === 'string') return lastUser.content.toLowerCase();
-      if (Array.isArray(lastUser.content)) {
-        return lastUser.content
-          .filter((p: any) => p.type === 'text')
-          .map((p: any) => p.text)
-          .join(" ")
-          .toLowerCase();
-      }
-      return "";
-    };
+    // 1. Get the last message and handle different roles
+    const lastMessage = messages.at(-1);
+    const query = typeof lastMessage?.content === "string" 
+      ? lastMessage.content.toLowerCase() 
+      : "";
 
-    // Helper to determine if we should execute a tool or just stop
-    const getResponseForQuery = (msgs: any[]) => {
-      const query = getQuery(msgs);
-      const isArabic = query.includes("أهلا") || query.includes("مرحبا") || query.includes("اكتب") || query.includes("افتح") || query.includes("اضغط") || query.includes("حرك") || query.includes("صور");
+    // 2. Define our behavior logic
+    const getResponseData = () => {
+      const timestamp = Date.now();
       
-      // Check if the last assistant message already has a tool result
-      const isFinished = msgs.some((m) => 
-        (m.role === 'assistant' && m.parts?.some((p: any) => p.type === 'tool-invocation' && p.toolInvocation.state === 'result')) ||
-        (m.role === 'assistant' && Array.isArray(m.content) && m.content.some((p: any) => p.type === 'tool-result')) ||
-        (m.role === 'tool')
-      );
+      // If the last message was a tool result, return a concluding message
+      const isToolResult = lastMessage?.role === "tool" || 
+       (lastMessage?.role === "assistant" && lastMessage.parts?.some((p: any) => p.type === 'tool-invocation' && p.toolInvocation.state === 'result'));
 
-      if (isFinished) {
+      if (isToolResult) {
+          return {
+              text: "The action has been completed. Is there anything else you'd like me to do?",
+              toolCalls: []
+          };
+      }
+
+      if (query.includes("hi") || query.includes("hello")) {
         return {
-          responseText: isArabic ? "لقد انتهيت من تنفيذ الأمر." : "I've finished executing the command.",
+          text: "Welcome! I am your AI SDK assistant. I can help you control this desktop. What would you like to do?",
           toolCalls: []
         };
       }
-
-      let responseText = "";
-      let toolCalls: any[] = [];
-      const timestamp = Date.now();
-
-      if (!sandboxId) {
-        return { responseText: "Desktop is not ready. Please wait a moment.", toolCalls: [] };
+      
+      if (query.includes("chrome") || query.includes("browser") || query.includes("open")) {
+        return {
+          text: "Sure! Opening Google Chrome for you now...",
+          toolCalls: [{
+            toolCallId: `id_${timestamp}`,
+            toolName: "bash",
+            args: { command: "google-chrome --no-sandbox" }
+          }]
+        };
       }
 
-      if (query.includes("hello") || query.includes("hi") || query.includes("أهلا") || query.includes("مرحبا")) {
-        responseText = isArabic ? "أهلاً! أنا جاهز لمساعدتك في استخدام الكمبيوتر. ماذا تريد مني أن أفعل؟" : "Hello! I am ready to help you with the computer. What would you like me to do?";
-      } else if (query.includes("type") || query.includes("write") || query.includes("اكتب")) {
-        const match = query.match(/(?:type|write|اكتب)\s+(.+)/i);
-        const textToType = match ? match[1] : "Hello World";
-        responseText = isArabic ? `بالتأكيد، سأقوم بكتابة "${textToType}" لك.` : `Sure, I will type "${textToType}" for you.`;
-        
-        toolCalls.push({
-          toolCallId: `move_${timestamp}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "left_click", coordinate: [512, 384] })
-        });
-        toolCalls.push({
-          toolCallId: `type_${timestamp + 1}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "type", text: textToType })
-        });
-        toolCalls.push({
-          toolCallId: `shot_${timestamp + 2}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "screenshot" })
-        });
-      } else if (query.includes("open") || query.includes("chrome") || query.includes("افتح")) {
-        responseText = isArabic ? "أقوم بفتح جوجل كروم من أجلك." : "I'm opening Google Chrome for you.";
-        toolCalls.push({
-          toolCallId: `move_${timestamp}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "mouse_move", coordinate: [20, 748] })
-        });
-        toolCalls.push({
-          toolCallId: `bash_${timestamp + 1}`,
-          toolName: "bash",
-          args: JSON.stringify({ command: "google-chrome --no-sandbox &" })
-        });
-        toolCalls.push({
-          toolCallId: `shot_${timestamp + 2}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "screenshot" })
-        });
-      } else if (query.includes("click") || query.includes("اضغط")) {
-        responseText = isArabic ? "أقوم بالضغط على الشاشة." : "I'm clicking on the screen.";
-        toolCalls.push({
-          toolCallId: `move_${timestamp}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "mouse_move", coordinate: [500, 300] })
-        });
-        toolCalls.push({
-          toolCallId: `click_${timestamp + 1}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "left_click", coordinate: [500, 300] })
-        });
-        toolCalls.push({
-          toolCallId: `shot_${timestamp + 2}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "screenshot" })
-        });
-      } else if (query.includes("move") || query.includes("mouse") || query.includes("حرك")) {
-        responseText = isArabic ? "أقوم بتحريك مؤشر الماوس." : "Moving the mouse pointer.";
-        toolCalls.push({
-          toolCallId: `move_${timestamp}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "mouse_move", coordinate: [400, 400] })
-        });
-        toolCalls.push({
-          toolCallId: `shot_${timestamp + 1}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "screenshot" })
-        });
-      } else if (query.includes("screenshot") || query.includes("capture") || query.includes("صور")) {
-        responseText = isArabic ? "أقوم بالتقاط صورة لسطح المكتب." : "Taking a fresh screenshot of the desktop.";
-        toolCalls.push({
-          toolCallId: `move_${timestamp}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "mouse_move", coordinate: [0, 0] })
-        });
-        toolCalls.push({
-          toolCallId: `shot_${timestamp + 1}`,
-          toolName: "computer",
-          args: JSON.stringify({ action: "screenshot" })
-        });
+      if (query.includes("type")) {
+        const typeMatch = query.match(/type\s+(.+)/i);
+        const textToType = typeMatch ? typeMatch[1] : "Hello World!";
+        return {
+          text: `I will type "${textToType}" for you.`,
+          toolCalls: [{
+            toolCallId: `id_${timestamp}`,
+            toolName: "computer",
+            args: { action: "type", text: textToType }
+          }]
+        };
       }
 
-      return { responseText, toolCalls };
+      // Default fallback for any other user query
+      return {
+        text: "I understand. I'll take a screenshot to see what's happening.",
+        toolCalls: [{
+          toolCallId: `id_${timestamp}`,
+          toolName: "computer",
+          args: { action: "screenshot" }
+        }]
+      };
     };
 
-    const result = streamText({
-      model: {
-        provider: "mock",
-        modelId: "mock-model",
-        specificationVersion: "v1",
-        doGenerate: async (): Promise<any> => {
-          const { responseText, toolCalls } = getResponseForQuery(simplifiedMessages as any);
-          return {
-            text: responseText,
-            toolCalls: toolCalls,
-            finishReason: toolCalls.length > 0 ? "tool-calls" : "stop",
-            usage: { promptTokens: 0, completionTokens: 0 },
-            rawCall: { rawPrompt: null, rawResponse: null },
-          };
-        },
-        doStream: async (): Promise<any> => {
-          const { responseText, toolCalls } = getResponseForQuery(simplifiedMessages as any);
-          return {
-            stream: new ReadableStream({
-              start(controller) {
-                if (responseText) {
-                  controller.enqueue({ type: "text-delta", textDelta: responseText });
-                }
-                for (const tc of toolCalls) {
-                  controller.enqueue({ type: "tool-call", ...tc });
-                }
-                controller.enqueue({
-                  type: "finish",
-                  finishReason: toolCalls.length > 0 ? "tool-calls" : "stop",
-                  usage: { promptTokens: 0, completionTokens: 0 },
-                });
-                controller.close();
-              },
-            }),
-            rawCall: { rawPrompt: null, rawResponse: null },
-          };
-        },
-      } as any,
-      messages: simplifiedMessages as any,
-      tools: sandboxId ? {
-        computer: computerTool(sandboxId),
-        bash: bashTool(sandboxId),
-      } : {},
-      maxSteps: 10,
-    });
+    const { text, toolCalls } = getResponseData();
 
-    return result.toDataStreamResponse();
+    return createDataStreamResponse({
+      execute: async (writer) => {
+        if (text) {
+          writer.writeData(text);
+        }
+
+        for (const tc of toolCalls) {
+          // Execute the tool
+          let result: any = "Success (Mock)";
+          try {
+            if (sandboxId) {
+              if (tc.toolName === "computer") {
+                const tool = computerTool(sandboxId);
+                if (tool && tool.execute) {
+                  result = await tool.execute(tc.args as any, {
+                    toolCallId: tc.toolCallId,
+                    messages: [],
+                  } as any);
+                }
+              } else if (tc.toolName === "bash") {
+                const tool = bashTool(sandboxId);
+                if (tool && tool.execute) {
+                  result = await tool.execute(tc.args as { command: string; restart?: boolean }, {
+                    toolCallId: tc.toolCallId,
+                    messages: [],
+                  } as any);
+                }
+              }
+            }
+          } catch (err) {
+            console.error(`Tool ${tc.toolName} execution failed:`, err);
+            result = `Error: ${err instanceof Error ? err.message : String(err)}`;
+          }
+
+          writer.writeData({
+            type: 'tool-call',
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            args: tc.args,
+          });
+
+          writer.writeData({
+            type: 'tool-result',
+            toolCallId: tc.toolCallId,
+            result: result,
+          });
+        }
+      },
+    });
   } catch (error) {
-    console.error("Chat API Error:", error);
-    return new Response(JSON.stringify({ error: "Something went wrong" }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
+    console.error("Critical Error:", error);
+    return createDataStreamResponse({
+      execute: (writer) => {
+        writer.writeData(`An error occurred: ${error instanceof Error ? error.message : String(error)}`);
+      },
     });
   }
 }

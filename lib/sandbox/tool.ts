@@ -1,11 +1,10 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { getDesktop } from "./utils";
+import { resolution } from "./constants";
 
 const wait = async (seconds: number) => {
   await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
 };
-
-export const resolution = { x: 1024, y: 768 };
 
 const DISPLAY_ENV = { DISPLAY: ":99" };
 
