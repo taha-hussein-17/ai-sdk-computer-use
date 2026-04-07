@@ -107,9 +107,10 @@ Handles:
 Streaming responses
 Tool invocation
 Mock AI logic (no paid API required)
-🎥 Demo
 
-👉 Video Demo: (add your link here)
+**Live Demo:**https://ai-sdk-computer-use-obiz.vercel.app/
+
+**Demo Video:** https://drive.google.com/file/d/1QLhSsx58vZIvbktTM0mpjBLyhrVaSFOn/view?usp=sharing
 
 Covers:
 
